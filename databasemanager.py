@@ -17,6 +17,13 @@ class DatabaseManager:
                                     id SERIAL PRIMARY KEY,
                                     title TEXT NOT NULL,
                                     content TEXT NOT NULL)"""))
+            await conn.commit()
+            await conn.execute(text("""CREATE TABLE IF NOT EXISTS users (
+                                    id SERIAL PRIMARY KEY,
+                                    username TEXT NOT NULL UNIQUE,
+                                    email TEXT NOT NULL,
+                                    )"""))
+            await conn.commit()
             print("db created")
 
     async def get_all_tasks(self):
@@ -32,4 +39,23 @@ class DatabaseManager:
                 raise Exception("Failed to create task")
             task_id = row[0]
             return {"id": task_id, "title": title, "content": content}
-            
+        
+    async def delete_task(self, task_id: int):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""DELETE FROM tasks WHERE id = :task_id"""), {"task_id": task_id})
+            if result.rowcount == 0:
+                raise Exception("Task not found")
+            return {"id": task_id}
+        
+    async def get_task(self, task_id: int):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                text("""SELECT * FROM tasks WHERE id = :task_id"""), {"task_id": task_id})
+            row = result.fetchone()
+            if row is None:
+                raise Exception("Task not found")
+            return {"id": row[0], "title": row[1], "content": row[2]}
+    
+
+
+
