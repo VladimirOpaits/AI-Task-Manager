@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Task Manager - OAuth Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e1e5e9;
+            border-radius: 15px;
+            background: #f8f9fa;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        .button.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        }
+
+        .button.secondary:hover {
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.4);
+        }
+
+        .button.success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        }
+
+        .button.success:hover {
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        .button.info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .button.info:hover {
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .button.warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        }
+
+        .button.warning:hover {
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.4);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .result h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .result pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .ai-result {
+            margin: 15px 0;
+            padding: 15px;
+            background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%);
+            border: 1px solid #c3e6cb;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.1);
+        }
+
+        .ai-result h4 {
+            color: #155724;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .ai-result div {
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            font-size: 0.9em;
+            line-height: 1.5;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .oauth-flow {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .oauth-flow h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+
+        .oauth-flow ol {
+            padding-left: 20px;
+            line-height: 1.8;
+        }
+
+        .oauth-flow li {
+            margin-bottom: 8px;
+        }
+
+        .exchange-item {
+            margin: 15px 0;
+            padding: 20px;
+            border: 1px solid #e1e5e9;
+            border-radius: 12px;
+            background: #f8f9fa;
+        }
+
+        .exchange-item:nth-child(even) {
+            background: #ffffff;
+        }
+
+        .exchange-prompt {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #1976d2;
+        }
+
+        .exchange-prompt h5 {
+            color: #1976d2;
+            margin: 0 0 8px 0;
+            font-size: 1em;
+        }
+
+        .exchange-response {
+            background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+        }
+
+        .exchange-response h5 {
+            color: #155724;
+            margin: 0 0 8px 0;
+            font-size: 1em;
+        }
+
+        .exchange-meta {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .context-display {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border: 1px solid #ffc107;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 15px 0;
+        }
+
+        .context-display h4 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+
+        .context-content {
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 AI Task Manager</h1>
+            <p>OAuth Authentication Test Interface</p>
+        </div>
+
+        <div class="content">
+            <div class="oauth-flow">
+                <h3>📋 Как работает AI Task Manager:</h3>
+                <ol>
+                    <li><strong>🔑 Login Google</strong> - авторизуемся через Google</li>
+                    <li><strong>📝 Создаем задачу</strong> - задаем имя и описание задачи</li>
+                    <li><strong>💬 Общаемся с AI</strong> - создаем exchanges (диалоги с AI)</li>
+                    <li><strong>📋 Смотрим историю</strong> - видим все промпты и ответы AI</li>
+                    <li><strong>🔍 Изучаем контекст</strong> - смотрим как AI понимает задачу</li>
+                </ol>
+                <p style="margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; color: #856404;">
+                    <strong>💡 Важно:</strong> После авторизации Google перенаправит вас на <code>/auth/google/callback</code> с токенами. 
+                    Это произойдет автоматически в браузере, где вы авторизовались.
+                </p>
+                <p style="margin-top: 10px; padding: 10px; background: #e8f5e8; border: 1px solid #c3e6c3; border-radius: 8px; color: #155724;">
+                    <strong>🔄 Если возникают проблемы:</strong> Попробуйте обновить страницу (Ctrl+F5) или очистить кэш браузера.
+                </p>
+                <p style="margin-top: 10px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; color: #856404;">
+                    <strong>🧪 Тестирование:</strong> Сначала нажмите "Test Simple API (CORS)" чтобы проверить базовое соединение, затем попробуйте Google OAuth.
+                </p>
+            </div>
+
+            <div class="section">
+                <h2>🔑 OAuth Authentication</h2>
+                <button class="button" onclick="loginGoogle()">Login with Google (Fetch)</button>
+                <button class="button secondary" onclick="loginGoogleXHR()">Login with Google (XHR)</button>
+                <button class="button secondary" onclick="testCallback()">Test Callback (Mock)</button>
+                <button class="button info" onclick="testSimpleAPI()">Test Simple API (CORS)</button>
+                <button class="button warning" onclick="clearResults()">Clear Results</button>
+                <div id="oauth-result" class="result" style="display: none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>🤖 AI Task Management</h2>
+                <div class="form-group">
+                    <label for="googleId">Google ID (sub):</label>
+                    <input type="text" id="googleId" placeholder="Paste your Google sub from callback">
+                    <button class="button info" style="margin-top:10px;" onclick="saveGoogleId()">Save Google ID</button>
+                </div>
+                <div class="form-group">
+                    <label for="taskName">Task Name:</label>
+                    <input type="text" id="taskName" placeholder="Short name for your task">
+                </div>
+                <div class="form-group">
+                    <label for="taskDescription">Task Description:</label>
+                    <textarea id="taskDescription" rows="4" placeholder="Describe what you want AI to do..."></textarea>
+                </div>
+                <button class="button success" onclick="createTask()">🚀 Create Task</button>
+                <button class="button" onclick="getMyTasks()">Get My Tasks</button>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="taskId">Selected Task ID:</label>
+                    <input type="number" id="taskId" placeholder="Select a task from the list" value="" readonly>
+                </div>
+                <div id="task-list" class="result" style="display: none;"></div>
+                <div id="selected-task-info" class="result" style="display: none;"></div>
+                <div class="form-group">
+                    <label for="exchangePrompt">Exchange Prompt (for selected Task):</label>
+                    <textarea id="exchangePrompt" rows="3" placeholder="Ask AI something related to the selected task..."></textarea>
+                </div>
+                <button class="button" onclick="getExchanges()">Get Task Exchanges</button>
+                <button class="button success" onclick="createExchange()">Create Exchange</button>
+                <button class="button warning" onclick="deleteTask()">Delete Task</button>
+                <div id="task-result" class="result" style="display: none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>🔍 API Status</h2>
+                <button class="button" onclick="checkAPI()">Check API Health</button>
+                <button class="button secondary" onclick="openDocs()">Open API Docs</button>
+                <button class="button secondary" onclick="clearCache()">Clear Cache</button>
+                <div id="api-result" class="result" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        // Add cache busting to prevent browser caching issues
+        function getApiUrl(endpoint) {
+            const sep = endpoint.includes('?') ? '&' : '?';
+            const url = `${API_BASE}${endpoint}${sep}_t=${Date.now()}&_v=1.0`;
+            console.log(`Generated API URL: ${url}`);
+            return url;
+        }
+        
+        // Clear results function
+        function clearResults() {
+            const containers = ['oauth-result', 'task-result', 'api-result', 'exchanges-display', 'context-display'];
+            containers.forEach(id => {
+                const container = document.getElementById(id);
+                if (container) {
+                    container.style.display = 'none';
+                    container.innerHTML = '';
+                }
+            });
+        }
+        
+        // Check if API is accessible
+        async function isApiAccessible() {
+            try {
+                const response = await fetch(`${API_BASE}/openapi.json`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+                return response.ok;
+            } catch (error) {
+                console.error('API accessibility check failed:', error);
+                return false;
+            }
+        }
+        
+        // Force clear cache function
+        function clearCache() {
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) {
+                        caches.delete(name);
+                    }
+                    console.log('Cache cleared');
+                });
+            }
+        }
+
+        function showResult(containerId, title, data, isError = false) {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+            
+            if (isError) {
+                let errorDetails = '';
+                if (data && typeof data === 'object') {
+                    if (data.message && data.message.includes('CORS')) {
+                        errorDetails = `
+                            <div class="status error" style="margin-bottom: 15px;">
+                                <strong>🚫 CORS Error Detected!</strong><br>
+                                This usually means the backend server is not running or CORS is not properly configured.
+                            </div>
+                        `;
+                    }
+                    if (data.suggestion) {
+                        errorDetails += `
+                            <div class="status error" style="margin-bottom: 15px;">
+                                <strong>💡 Suggestion:</strong> ${data.suggestion}
+                            </div>
+                        `;
+                    }
+                }
+                
+                container.innerHTML = `
+                    <h3>❌ ${title}</h3>
+                    ${errorDetails}
+                    <div class="status error">Error occurred</div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } else {
+                let resultContent = '';
+                
+                // Если есть AI результат, показываем его отдельно
+                if (data.ai_result) {
+                    resultContent = `
+                        <div class="ai-result">
+                            <h4>🤖 AI Response:</h4>
+                            <div>
+                                ${data.ai_result}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                container.innerHTML = `
+                    <h3>✅ ${title}</h3>
+                    <div class="status success">Success!</div>
+                    ${resultContent}
+                    <h4>📋 Task Details:</h4>
+                    <pre>${JSON.stringify(data.task, null, 2)}</pre>
+                `;
+            }
+        }
+
+        function showStatus(containerId, message, isError = false) {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+            container.innerHTML = `
+                <h3>ℹ️ Status</h3>
+                <div class="status ${isError ? 'error' : 'success'}">${message}</div>
+            `;
+        }
+
+        async function loginGoogle() {
+            try {
+                console.log('Starting Google OAuth login...');
+                
+                // First check if API is accessible
+                const apiAccessible = await isApiAccessible();
+                if (!apiAccessible) {
+                    showResult('oauth-result', 'API Not Accessible', {
+                        message: 'Cannot connect to the backend API. Please make sure the server is running on localhost:8000',
+                        suggestion: 'Check if your FastAPI server is running and accessible'
+                    }, true);
+                    return;
+                }
+                
+                const url = getApiUrl('/login/google');
+                console.log('Requesting URL:', url);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include', // Changed from 'omit' to 'include'
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Response received');
+                console.log('Response status:', response.status);
+                console.log('Response statusText:', response.statusText);
+                console.log('Response ok:', response.ok);
+                console.log('Response headers:', response.headers);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.auth_url) {
+                        // Show result with button directly
+                        const resultContainer = document.getElementById('oauth-result');
+                        resultContainer.style.display = 'block';
+                        resultContainer.innerHTML = `
+                            <h3>✅ Google OAuth URL Received</h3>
+                            <div class="status success">Success! Google OAuth URL received successfully!</div>
+                            <pre>${JSON.stringify({ 
+                                url: data.auth_url,
+                                message: data.message,
+                                instructions: 'Click the button below to open Google OAuth in a new tab'
+                            }, null, 2)}</pre>
+                            <button class="button success" onclick="window.open('${data.auth_url}', '_blank')" style="margin-top: 15px;">
+                                🔗 Open Google OAuth
+                            </button>
+                        `;
+                        
+                        console.log('Button added successfully');
+                    } else {
+                        showResult('oauth-result', 'No auth_url in response', data, true);
+                    }
+                } else {
+                    console.error('Unexpected response status:', response.status);
+                    const errorText = await response.text();
+                    console.error('Error response body:', errorText);
+                    showResult('oauth-result', 'Login Google Error', { 
+                        status: response.status, 
+                        statusText: response.statusText,
+                        body: errorText
+                    }, true);
+                }
+            } catch (error) {
+                console.error('Login Google Error:', error);
+                showResult('oauth-result', 'Login Google Error', {
+                    message: error.message,
+                    type: error.name,
+                    stack: error.stack
+                }, true);
+            }
+        }
+
+        async function testSimpleAPI() {
+            try {
+                console.log('Testing simple API endpoint...');
+                const response = await fetch(getApiUrl('/openapi.json'), {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                console.log('Simple API Response status:', response.status);
+                console.log('Simple API Response ok:', response.ok);
+                
+                if (response.ok) {
+                    showStatus('oauth-result', '✅ Simple API test successful! CORS is working.', false);
+                } else {
+                    showStatus('oauth-result', `❌ Simple API test failed with status: ${response.status}`, true);
+                }
+            } catch (error) {
+                console.error('Simple API test error:', error);
+                showStatus('oauth-result', `❌ Simple API test error: ${error.message}`, true);
+            }
+        }
+
+        async function testCallback() {
+            showStatus('oauth-result', 'Callback endpoint is automatically called by Google after OAuth authorization. You can check the browser where you authorized to see the tokens, or check your FastAPI server logs.');
+        }
+
+        // Alternative method using XMLHttpRequest for debugging
+        async function loginGoogleXHR() {
+            try {
+                console.log('Trying XMLHttpRequest method...');
+                
+                // First check if API is accessible
+                const apiAccessible = await isApiAccessible();
+                if (!apiAccessible) {
+                    showResult('oauth-result', 'API Not Accessible (XHR)', {
+                        message: 'Cannot connect to the backend API. Please make sure the server is running on localhost:8000',
+                        suggestion: 'Check if your FastAPI server is running and accessible'
+                    }, true);
+                    return;
+                }
+                
+                const xhr = new XMLHttpRequest();
+                const url = getApiUrl('/login/google');
+                
+                xhr.open('GET', url, true);
+                xhr.withCredentials = true; // Enable credentials for CORS
+                // Remove Content-Type header for GET request
+                xhr.setRequestHeader('Accept', 'application/json');
+                
+                xhr.onreadystatechange = function() {
+                    console.log('XHR readyState:', xhr.readyState, 'status:', xhr.status);
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            try {
+                                const data = JSON.parse(xhr.responseText);
+                                console.log('XHR Response data:', data);
+                                
+                                if (data.auth_url) {
+                                    const resultContainer = document.getElementById('oauth-result');
+                                    resultContainer.style.display = 'block';
+                                    resultContainer.innerHTML = `
+                                        <h3>✅ Google OAuth URL Received (XHR)</h3>
+                                        <div class="status success">Success! Google OAuth URL received successfully!</div>
+                                        <pre>${JSON.stringify({ 
+                                            url: data.auth_url,
+                                            message: data.message,
+                                            method: 'XMLHttpRequest',
+                                            instructions: 'Click the button below to open Google OAuth in a new tab'
+                                        }, null, 2)}</pre>
+                                        <button class="button success" onclick="window.open('${data.auth_url}', '_blank')" style="margin-top: 15px;">
+                                            🔗 Open Google OAuth
+                                        </button>
+                                    `;
+                                } else {
+                                    showResult('oauth-result', 'No auth_url in XHR response', data, true);
+                                }
+                            } catch (e) {
+                                console.error('XHR JSON parse error:', e);
+                                showResult('oauth-result', 'XHR JSON Parse Error', { 
+                                    error: e.message,
+                                    response: xhr.responseText 
+                                }, true);
+                            }
+                        } else {
+                            console.log('XHR Response:', xhr.responseText);
+                            showResult('oauth-result', 'XHR Response', { 
+                                status: xhr.status, 
+                                statusText: xhr.statusText,
+                                response: xhr.responseText,
+                                readyState: xhr.readyState
+                            }, xhr.status !== 200);
+                        }
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    console.error('XHR Error:', xhr);
+                    showResult('oauth-result', 'XHR Error', {
+                        readyState: xhr.readyState,
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        responseText: xhr.responseText
+                    }, true);
+                };
+                
+                xhr.send();
+            } catch (error) {
+                console.error('XHR setup error:', error);
+                showResult('oauth-result', 'XHR Setup Error', {
+                    message: error.message,
+                    type: error.name
+                }, true);
+            }
+        }
+
+        // Google ID helpers
+        function getGoogleId() {
+            return localStorage.getItem('google_id') || '';
+        }
+
+        function setGoogleId(value) {
+            if (value && typeof value === 'string') {
+                localStorage.setItem('google_id', value.trim());
+                const input = document.getElementById('googleId');
+                if (input) input.value = value.trim();
+            }
+        }
+
+        function saveGoogleId() {
+            const input = document.getElementById('googleId');
+            const value = input ? input.value.trim() : '';
+            if (!value) {
+                showStatus('oauth-result', 'Введите корректный Google ID (sub из callback)', true);
+                return;
+            }
+            setGoogleId(value);
+            showStatus('oauth-result', 'Google ID сохранён. Теперь можно создавать и получать задачи.');
+        }
+
+        function assertGoogleIdOrShowError(contextLabel) {
+            const gid = getGoogleId();
+            if (!gid) {
+                showResult('task-result', `${contextLabel}: Google ID не задан`, {
+                    error: 'missing google_id',
+                    hint: 'Пройдите Login with Google, затем получите sub из /auth/google/callback и сохраните его выше.'
+                }, true);
+                return null;
+            }
+            return gid;
+        }
+
+        // Task cache for selection
+        let tasksCache = [];
+
+        function renderTaskList(tasks) {
+            const listEl = document.getElementById('task-list');
+            if (!listEl) return;
+            tasksCache = Array.isArray(tasks) ? tasks : [];
+            if (tasksCache.length === 0) {
+                listEl.style.display = 'block';
+                listEl.innerHTML = `
+                    <h3>📋 My Tasks</h3>
+                    <div class="status">No tasks yet. Create one above.</div>
+                `;
+                return;
+            }
+            const rows = tasksCache.map(t => {
+                const name = t.task_name || (t.prompt ? (String(t.prompt).split('\n')[0]) : '');
+                const desc = t.task_description || '';
+                const summary = desc ? `${name} — ${desc}` : name;
+                return `
+                <tr>
+                    <td>${t.id}</td>
+                    <td>${summary.slice(0, 120)}</td>
+                    <td>${t.created_at ? new Date(t.created_at).toLocaleString() : ''}</td>
+                    <td><button class="button secondary" onclick="selectTask(${t.id})">Select</button></td>
+                </tr>`;
+            }).join('');
+            listEl.style.display = 'block';
+            listEl.innerHTML = `
+                <h3>📋 My Tasks</h3>
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;padding:6px">ID</th>
+                            <th style="text-align:left;padding:6px">Title</th>
+                            <th style="text-align:left;padding:6px">Created</th>
+                            <th style="text-align:left;padding:6px">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function selectTask(taskId) {
+            const task = tasksCache.find(t => String(t.id) === String(taskId));
+            const idInput = document.getElementById('taskId');
+            const infoEl = document.getElementById('selected-task-info');
+            if (idInput) idInput.value = task ? task.id : '';
+            if (infoEl) {
+                if (!task) {
+                    infoEl.style.display = 'block';
+                    infoEl.innerHTML = `<h3>❌ Task not found</h3>`;
+                } else {
+                    const view = {
+                        id: task.id,
+                        task_name: task.task_name || null,
+                        task_description: task.task_description || null,
+                        // fallback to prompt if legacy tasks exist
+                        prompt: task.prompt || undefined,
+                        user_id: task.user_id,
+                        created_at: task.created_at
+                    };
+                    infoEl.style.display = 'block';
+                    infoEl.innerHTML = `
+                        <h3>✅ Selected Task</h3>
+                        <pre>${JSON.stringify(view, null, 2)}</pre>
+                    `;
+                }
+            }
+        }
+
+        async function createTask() {
+            try {
+                const name = (document.getElementById('taskName').value || '').trim();
+                const description = (document.getElementById('taskDescription').value || '').trim();
+                if (!name) {
+                    showResult('task-result', 'Validation Error', { message: 'Task Name is required' }, true);
+                    return;
+                }
+                const google_id = assertGoogleIdOrShowError('Create Task');
+                if (!google_id) return;
+
+                const response = await fetch(getApiUrl(`/tasks/create?google_id=${encodeURIComponent(google_id)}`), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ task_name: name, task_description: description })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    showResult('task-result', 'Task Created Successfully', {
+                        task: data.task
+                    });
+                    await getMyTasks();
+                    if (data.task && data.task.id) {
+                        selectTask(data.task.id);
+                    }
+                } else {
+                    showResult('task-result', 'Task Creation Failed', data, true);
+                }
+            } catch (error) {
+                showResult('task-result', 'Task Creation Error', error, true);
+            }
+        }
+
+        async function getMyTasks() {
+            try {
+                const google_id = assertGoogleIdOrShowError('Get My Tasks');
+                if (!google_id) return;
+                const response = await fetch(getApiUrl(`/tasks/my?google_id=${encodeURIComponent(google_id)}`));
+                const data = await response.json();
+                
+                if (response.ok) {
+                    renderTaskList(data.tasks);
+                    showStatus('oauth-result', 'My tasks loaded.');
+                } else {
+                    showResult('task-result', 'Failed to Get My Tasks', data, true);
+                }
+            } catch (error) {
+                showResult('task-result', 'Get My Tasks Error', error, true);
+            }
+        }
+
+        async function getTask() {
+            try {
+                const taskId = document.getElementById('taskId').value;
+                const google_id = assertGoogleIdOrShowError('Get Task');
+                if (!google_id) return;
+                const response = await fetch(getApiUrl(`/tasks/${taskId}?google_id=${encodeURIComponent(google_id)}`));
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('task-result', `Task ${taskId} Retrieved`, { task: data });
+                } else {
+                    showResult('task-result', `Failed to Get Task ${taskId}`, data, true);
+                }
+            } catch (error) {
+                showResult('task-result', 'Get Task Error', error, true);
+            }
+        }
+
+        async function deleteTask() {
+            try {
+                const taskId = document.getElementById('taskId').value;
+                const google_id = assertGoogleIdOrShowError('Delete Task');
+                if (!google_id) return;
+                const response = await fetch(getApiUrl(`/tasks/${taskId}?google_id=${encodeURIComponent(google_id)}`), {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showResult('task-result', `Task ${taskId} Deleted`, data);
+                } else {
+                    showResult('task-result', `Failed to Delete Task ${taskId}`, data, true);
+                }
+            } catch (error) {
+                showResult('task-result', 'Delete Task Error', error, true);
+            }
+        }
+
+        async function createExchange() {
+            try {
+                const taskId = document.getElementById('taskId').value;
+                const prompt = document.getElementById('exchangePrompt').value.trim();
+                
+                if (!taskId) {
+                    showResult('task-result', 'Ошибка', {message: 'Выберите задачу сначала'}, true);
+                    return;
+                }
+                
+                if (!prompt) {
+                    showResult('task-result', 'Ошибка', {message: 'Введите промпт для AI'}, true);
+                    return;
+                }
+                
+                const google_id = assertGoogleIdOrShowError('Create Exchange');
+                if (!google_id) return;
+                
+                const response = await fetch(getApiUrl(`/tasks/${taskId}/create_exchange?google_id=${encodeURIComponent(google_id)}&prompt=${encodeURIComponent(prompt)}`), {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('task-result', `✅ Exchange создан для задачи ${taskId}`, data);
+                    
+                    // Очистить поле промпта
+                    document.getElementById('exchangePrompt').value = '';
+                    
+                    // Автоматически обновить список exchanges
+                    setTimeout(() => {
+                        getExchanges();
+                    }, 500);
+                } else {
+                    showResult('task-result', `Failed to Create Exchange for Task ${taskId}`, data, true);
+                }
+            } catch (error) {
+                showResult('task-result', 'Create Exchange Error', error, true);
+            }
+        }
+
+        async function getExchanges() {
+            try {
+                const taskId = document.getElementById('taskId').value;
+                if (!taskId) {
+                    showResult('exchanges-display', 'Ошибка', {message: 'Выберите задачу сначала'}, true);
+                    return;
+                }
+                const google_id = assertGoogleIdOrShowError('Get Exchanges');
+                if (!google_id) return;
+                
+                const response = await fetch(getApiUrl(`/tasks/${taskId}/exchanges?google_id=${encodeURIComponent(google_id)}`));
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayExchanges(data);
+                } else {
+                    showResult('exchanges-display', `Failed to Get Exchanges for Task ${taskId}`, data, true);
+                }
+            } catch (error) {
+                showResult('exchanges-display', 'Get Exchanges Error', error, true);
+            }
+        }
+
+        function displayExchanges(data) {
+            const container = document.getElementById('exchanges-display');
+            container.style.display = 'block';
+            
+            if (!data.exchanges || data.exchanges.length === 0) {
+                container.innerHTML = `
+                    <h3>💬 История обмена с AI</h3>
+                    <div class="status">Пока нет диалогов с AI для этой задачи. Создайте первый exchange выше.</div>
+                `;
+                return;
+            }
+
+            const exchangesHtml = data.exchanges.map((exchange, index) => {
+                const createdAt = exchange.created_at ? new Date(exchange.created_at).toLocaleString('ru-RU') : 'Неизвестно';
+                return `
+                    <div class="exchange-item">
+                        <div class="exchange-prompt">
+                            <h5>👤 Промпт:</h5>
+                            <div>${escapeHtml(exchange.prompt || 'Пустой промпт')}</div>
+                        </div>
+                        <div class="exchange-response">
+                            <h5>🤖 Ответ AI:</h5>
+                            <div>${escapeHtml(exchange.response || 'Нет ответа')}</div>
+                        </div>
+                        <div class="exchange-meta">
+                            📅 Создано: ${createdAt} | 🆔 Exchange ID: ${exchange.id}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <h3>💬 История обмена с AI (${data.exchanges.length})</h3>
+                <div class="status success">Загружено ${data.exchanges.length} диалога(ов)</div>
+                <div style="max-height: 600px; overflow-y: auto;">
+                    ${exchangesHtml}
+                </div>
+            `;
+        }
+
+        async function getTaskContext() {
+            try {
+                const taskId = document.getElementById('taskId').value;
+                if (!taskId) {
+                    showResult('context-display', 'Ошибка', {message: 'Выберите задачу сначала'}, true);
+                    return;
+                }
+                const google_id = assertGoogleIdOrShowError('Get Task Context');
+                if (!google_id) return;
+                
+                const response = await fetch(getApiUrl(`/tasks/${taskId}/context?google_id=${encodeURIComponent(google_id)}`));
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayTaskContext(data);
+                } else {
+                    showResult('context-display', `Failed to Get Task Context for Task ${taskId}`, data, true);
+                }
+            } catch (error) {
+                showResult('context-display', 'Get Task Context Error', error, true);
+            }
+        }
+
+        function displayTaskContext(data) {
+            const container = document.getElementById('context-display');
+            container.style.display = 'block';
+            
+            const taskName = data.task?.task_name || 'Неизвестная задача';
+            const taskDesc = data.task?.task_description || 'Нет описания';
+            const context = data.context || 'Контекст не сгенерирован';
+
+            container.innerHTML = `
+                <div class="context-display">
+                    <h4>🔍 Контекст задачи: ${escapeHtml(taskName)}</h4>
+                    <div style="margin-bottom: 15px;">
+                        <strong>📝 Описание задачи:</strong><br>
+                        <em>${escapeHtml(taskDesc)}</em>
+                    </div>
+                    <div>
+                        <strong>🧠 Сгенерированный AI контекст:</strong>
+                        <div class="context-content">${escapeHtml(context)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function checkAPI() {
+            try {
+                const response = await fetch(getApiUrl('/openapi.json'));
+                if (response.ok) {
+                    showStatus('api-result', 'API is running and healthy!');
+                } else {
+                    showStatus('api-result', 'API responded but with error status', true);
+                }
+            } catch (error) {
+                showStatus('api-result', 'API is not accessible. Make sure the server is running on localhost:8000', true);
+            }
+        }
+
+        function openDocs() {
+            window.open(`${API_BASE}/docs`, '_blank');
+        }
+
+        function showTaskInfo(task) {
+            const selectedTaskInfo = document.getElementById('selected-task-info');
+            selectedTaskInfo.style.display = 'block';
+            selectedTaskInfo.innerHTML = `
+                <h4>Selected Task: ${task.name}</h4>
+                <p><strong>Description:</strong> ${task.description}</p>
+                <p><strong>ID:</strong> ${task.id}</p>
+                <p><strong>Created At:</strong> ${task.created_at}</p>
+                <p><strong>Updated At:</strong> ${task.updated_at}</p>
+            `;
+        }
+
+        // Auto-check API status on page load
+        window.addEventListener('load', () => {
+            clearResults(); // Clear any previous results
+            checkAPI();
+            // Prefill googleId input from localStorage if available
+            const gid = localStorage.getItem('google_id');
+            const input = document.getElementById('googleId');
+            if (gid && input) input.value = gid;
+        });
+    </script>
+</body>
+</html>
