@@ -5,7 +5,14 @@ from typing import Optional
 
 class DatabaseManager:
     def __init__(self, database_url: str):
-        self.engine = create_async_engine(database_url, echo=True)
+        self.engine = create_async_engine(
+            database_url, 
+            echo=True,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            pool_size=5,
+            max_overflow=10
+        )
         self.async_session = async_sessionmaker(
             self.engine,
             class_= AsyncSession,
@@ -33,6 +40,7 @@ class DatabaseManager:
                                     task_description TEXT NOT NULL,
                                     task_context TEXT,
                                     task_status TEXT NOT NULL,
+                                    private BOOLEAN DEFAULT TRUE,
                                     user_id INTEGER NOT NULL,
                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -47,12 +55,14 @@ class DatabaseManager:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"""))
+            
+
             print("db created")
 
     async def get_all_tasks(self):
         async with self.engine.begin() as conn:
             result = await conn.execute(text("""
-                SELECT t.id, t.task_name, t.task_description, t.task_status, t.user_id, t.created_at, t.updated_at, u.name as user_name, u.email as user_email 
+                SELECT t.id, t.task_name, t.task_description, t.task_status, t.private, t.user_id, t.created_at, t.updated_at, u.name as user_name, u.email as user_email 
                 FROM tasks t 
                 JOIN users u ON t.user_id = u.id
                 ORDER BY t.created_at DESC
@@ -62,26 +72,27 @@ class DatabaseManager:
                 "task_name": row[1],
                 "task_description": row[2],
                 "task_status": row[3],
-                "user_id": row[4],
-                "created_at": row[5],
-                "updated_at": row[6],
-                "user_name": row[7],
-                "user_email": row[8]
+                "private": row[4],
+                "user_id": row[5],
+                "created_at": row[6],
+                "updated_at": row[7],
+                "user_name": row[8],
+                "user_email": row[9]
             } for row in result.fetchall()]
 
-    async def create_task(self, task_name: str, task_description: str, user_id: int):
+    async def create_task(self, task_name: str, task_description: str, user_id: int, private: bool = True):
         async with self.engine.begin() as conn:
             result = await conn.execute(text("""
-                INSERT INTO tasks (task_name, task_description, task_context, task_status, user_id) 
-                VALUES (:task_name, :task_description, 'no context', 'not solved', :user_id) 
+                INSERT INTO tasks (task_name, task_description, task_context, task_status, private, user_id) 
+                VALUES (:task_name, :task_description, 'no context', 'not solved', :private, :user_id) 
                 RETURNING id, created_at
-            """), {"task_name": task_name, "task_description": task_description, "user_id": user_id})
+            """), {"task_name": task_name, "task_description": task_description, "private": private, "user_id": user_id})
             row = result.fetchone()
             if row is None:
                 raise Exception("Failed to create task")
             task_id = row[0]
             created_at = row[1]
-            return {"id": task_id, "task_name": task_name, "task_description": task_description, "task_context": "no context", "task_status": "not solved", "user_id": user_id, "created_at": created_at}
+            return {"id": task_id, "task_name": task_name, "task_description": task_description, "task_context": "no context", "task_status": "not solved", "private": private, "user_id": user_id, "created_at": created_at}
         
     async def delete_task(self, task_id: int, user_id: int):
         async with self.engine.begin() as conn:
@@ -96,7 +107,7 @@ class DatabaseManager:
     async def get_task(self, task_id: int, user_id: int):
         async with self.engine.begin() as conn:
             result = await conn.execute(text("""
-                SELECT t.id, t.task_name, t.task_description, t.task_context, t.task_status, t.user_id, t.created_at, u.name as user_name, u.email as user_email 
+                SELECT t.id, t.task_name, t.task_description, t.task_context, t.task_status, t.private, t.user_id, t.created_at, u.name as user_name, u.email as user_email 
                 FROM tasks t 
                 JOIN users u ON t.user_id = u.id 
                 WHERE t.id = :task_id AND t.user_id = :user_id
@@ -104,12 +115,17 @@ class DatabaseManager:
             row = result.fetchone()
             if row is None:
                 raise Exception("Task not found or you don't have permission to access it")
-            return {"id": row[0], "task_name": row[1], "task_description": row[2], "task_context": row[3], "task_status": row[4], "user_id": row[5], "created_at": row[6], "user_name": row[7], "user_email": row[8]}
+            return {"id": row[0], "task_name": row[1], "task_description": row[2], "task_context": row[3], "task_status": row[4], "private": row[5], "user_id": row[6], "created_at": row[7], "user_name": row[8], "user_email": row[9]}
 
     async def update_task_context(self, task_id: int, user_id: int, task_context: str):
         async with self.engine.begin() as conn:
             await conn.execute(text("""UPDATE tasks SET task_context = :task_context WHERE id = :task_id AND user_id = :user_id"""), {"task_context": task_context, "task_id": task_id, "user_id": user_id})
             return {"id": task_id, "task_context": task_context}
+
+    async def update_task_status(self, task_id: int, user_id: int, status: str):
+        async with self.engine.begin() as conn:
+            await conn.execute(text("""UPDATE tasks SET task_status = :status WHERE id = :task_id AND user_id = :user_id"""), {"status": status, "task_id": task_id, "user_id": user_id})
+            return {"id": task_id, "task_status": status}
 
     async def create_user(self, google_id: str, email: str, name: Optional[str] = None, picture: Optional[str] = None, access_token: Optional[str] = None, refresh_token: Optional[str] = None, token_expires_at: Optional[datetime] = None):
         async with self.engine.begin() as conn:
@@ -123,7 +139,7 @@ class DatabaseManager:
     async def get_users_tasks(self, user_id: int):
         async with self.engine.begin() as conn:
             result = await conn.execute(text("""
-                SELECT id, task_name, task_description, task_status, user_id, created_at, updated_at
+                SELECT id, task_name, task_description, task_status, private, user_id, created_at, updated_at
                 FROM tasks 
                 WHERE user_id = :user_id
                 ORDER BY created_at DESC
@@ -133,9 +149,10 @@ class DatabaseManager:
                 "task_name": row[1],
                 "task_description": row[2],
                 "task_status": row[3],
-                "user_id": row[4],
-                "created_at": row[5],
-                "updated_at": row[6]
+                "private": row[4],
+                "user_id": row[5],
+                "created_at": row[6],
+                "updated_at": row[7]
             } for row in result.fetchall()]
 
     async def get_user_by_email(self, email:str):
@@ -215,3 +232,37 @@ class DatabaseManager:
                 ORDER BY created_at ASC
             """), {"task_id": task_id, "user_id": user_id})
             return [{"id": row[0], "prompt": row[1], "response": row[2], "created_at": row[3]} for row in result.fetchall()]
+
+    async def update_task_privacy(self, task_id: int, user_id: int, private: bool):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""
+                UPDATE tasks SET private = :private 
+                WHERE id = :task_id AND user_id = :user_id
+            """), {"private": private, "task_id": task_id, "user_id": user_id})
+            if result.rowcount == 0:
+                raise Exception("Task not found or you don't have permission to update it")
+            return {"id": task_id, "private": private}
+
+    async def get_public_tasks(self):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""
+                SELECT t.id, t.task_name, t.task_description, t.task_status, t.private, t.user_id, t.created_at, t.updated_at, u.name as user_name, u.email as user_email 
+                FROM tasks t 
+                JOIN users u ON t.user_id = u.id
+                WHERE t.private = FALSE
+                ORDER BY t.created_at DESC
+            """))
+            return [{
+                "id": row[0],
+                "task_name": row[1],
+                "task_description": row[2],
+                "task_status": row[3],
+                "private": row[4],
+                "user_id": row[5],
+                "created_at": row[6],
+                "updated_at": row[7],
+                "user_name": row[8],
+                "user_email": row[9]
+            } for row in result.fetchall()]
+
+   

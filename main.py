@@ -3,7 +3,6 @@ from fastapi.security import OAuth2AuthorizationCodeBearer
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from huggingface_hub import InferenceClient
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Optional
@@ -36,6 +35,7 @@ class Token(BaseModel):
 class CreateTask(BaseModel):
     task_name: str
     task_description: str
+    private: bool = True
 
 class Task(CreateTask):
     id: int
@@ -44,26 +44,53 @@ class Task(CreateTask):
 async def  lifespan(app: FastAPI):
     print("FastAPI server started")
     await db_manager.init_db()
+    await llm_manager.init_redis()
     yield
+    await llm_manager.redis.close()
     print("FastAPI server ended")
 
 app = FastAPI(title= "AI Task Manager", lifespan= lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000"
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    print(f"🔧 OPTIONS request for path: {path}")
+    return {"message": "OK"}
+
+@app.middleware("http")
+async def cors_debug_middleware(request, call_next):
+    print(f"📡 {request.method} {request.url} - Origin: {request.headers.get('origin', 'No Origin')}")
+
+    if request.method == "OPTIONS":
+        from fastapi.responses import Response
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "600"
+        print(f"📤 Preflight response sent")
+        return response
+    
+    response = await call_next(request)
+    
+
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    print(f"📤 Response status: {response.status_code}")
+    return response
+
+@app.get("/health")
+async def health_check():
+    return {"status": "OK", "message": "API is running"}
 
 @app.get("/login/google")
 async def login_google():
@@ -141,7 +168,7 @@ async def create_task(task: CreateTask, google_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    created_task = await db_manager.create_task(task.task_name, task.task_description, user["id"])
+    created_task = await db_manager.create_task(task.task_name, task.task_description, user["id"], task.private)
 
     return {"message": "Success", "task": created_task}
 
@@ -161,11 +188,15 @@ async def create_exchange(task_id: int, google_id: str, prompt: str):
         raise HTTPException(status_code=404, detail="User not found")
 
     task = await db_manager.get_task(task_id, user["id"])
-    task_context = await llm_manager.generate_task_context(task["task_name"], task["task_description"], task["id"], user["id"])
+    
+    await llm_manager.invalidate_task_cache(task_id, user["id"])
+    
+    task_context = await llm_manager.generate_task_context(task["task_name"], task["task_description"], task["id"], user["id"], task["task_context"])
     await db_manager.update_task_context(task_id, user["id"], task_context)
     
     result = llm_manager.get_answer(prompt, task_context)
     await db_manager.create_exchange(task_id, user["id"], prompt, result)
+    
     return {"message": "Exchange created successfully", "exchange": result}
 
 @app.get("/tasks/{task_id}/exchanges")
@@ -188,5 +219,34 @@ async def get_task_context(task_id: int, google_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
         
-    task_context = await llm_manager.generate_task_context(task["task_name"], task["task_description"], task["id"], user["id"])
+    task_context = await llm_manager.generate_task_context(task["task_name"], task["task_description"], task["id"], user["id"], task["task_context"])
+    
+    if task_context != task["task_context"]:
+        await db_manager.update_task_context(task_id, user["id"], task_context)
+    
     return {"task": task, "context": task_context}
+
+@app.post("/tasks/{task_id}/change_status")
+async def change_task_status(task_id: int, user_id: int, status: str):
+    await db_manager.update_task_status(task_id, user_id, status)
+    return {"message": "Task status changed successfully"}
+
+@app.post("/tasks/{task_id}/context/update")
+async def update_task_context(task_id: int, user_id: int, context: str):
+    await db_manager.update_task_context(task_id, user_id, context)
+    await llm_manager.invalidate_task_cache(task_id, user_id)
+    return {"message": "Task context updated successfully"}
+
+@app.get("/tasks/public")
+async def get_public_tasks():
+    tasks = await db_manager.get_public_tasks()
+    return {"tasks": tasks}
+
+@app.post("/tasks/{task_id}/privacy")
+async def update_task_privacy(task_id: int, google_id: str, private: bool):
+    user = await db_manager.get_user_by_google_id(google_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    updated_task = await db_manager.update_task_privacy(task_id, user["id"], private)
+    return {"message": "Task privacy updated successfully", "task": updated_task}
