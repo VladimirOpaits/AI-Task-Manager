@@ -1,0 +1,5 @@
+sqlalchemy[asyncio]
+asyncpg
+redis[hiredis]
+openai
+python-dotenv

@@ -10,16 +10,8 @@ import httpx
 import json
 import asyncio
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
 
-from databasemanager import DatabaseManager
-from llmmanager import LLMManager
-
-from config import DATABASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USER_INFO_URL
-
-db_manager = DatabaseManager(DATABASE_URL)
-llm_manager = LLMManager()
-
+from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USER_INFO_URL, BACKEND_SERVICE_URL
 
 oauth2_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl=GOOGLE_AUTH_URL,
@@ -44,15 +36,12 @@ class Task(CreateTask):
     id: int
 
 @asynccontextmanager
-async def  lifespan(app: FastAPI):
-    print("FastAPI server started")
-    await db_manager.init_db()
-    await llm_manager.init_redis()
+async def lifespan(app: FastAPI):
+    print("API microservice started")
     yield
-    await llm_manager.redis.close()
-    print("FastAPI server ended")
+    print("API microservice ended")
 
-app = FastAPI(title= "AI Task Manager", lifespan= lifespan)
+app = FastAPI(title="AI Task Manager API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,7 +72,6 @@ async def cors_debug_middleware(request, call_next):
     
     response = await call_next(request)
     
-
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
@@ -93,7 +81,7 @@ async def cors_debug_middleware(request, call_next):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "OK", "message": "API is running"}
+    return {"status": "OK", "message": "API microservice is running"}
 
 @app.websocket("/ws/test")
 async def websocket_test(websocket: WebSocket):
@@ -157,15 +145,26 @@ async def auth_google_callback(code: str):
     
     user_info = userinfo_response.json()
 
-    existing_user = await db_manager.get_user_by_google_id(user_info["sub"])
-
     expires_at = datetime.now() + timedelta(seconds=token_data["expires_in"])
-
-    if existing_user:
-        await db_manager.update_user_tokens(user_info["sub"], token_data["access_token"], token_data.get("refresh_token"), expires_at)
-        user = existing_user
-    else:
-        user = await db_manager.create_user(user_info["sub"], user_info["email"], user_info["name"], user_info["picture"], token_data["access_token"], token_data.get("refresh_token"), expires_at)
+    
+    async with httpx.AsyncClient() as client:
+        user_response = await client.post(
+            f"{BACKEND_SERVICE_URL}/users/auth",
+            json={
+                "google_id": user_info["sub"],
+                "email": user_info["email"],
+                "name": user_info["name"],
+                "picture": user_info["picture"],
+                "access_token": token_data["access_token"],
+                "refresh_token": token_data.get("refresh_token"),
+                "expires_at": expires_at.isoformat()
+            }
+        )
+    
+    if user_response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Backend service error")
+    
+    user = user_response.json()
 
     html_content = f"""
     <!DOCTYPE html>
@@ -236,7 +235,6 @@ async def auth_google_callback(code: str):
         </div>
         
         <script>
-            // Отправляем данные пользователя в parent window
             if (window.opener) {{
                 window.opener.postMessage({{
                     type: 'google_auth_success',
@@ -249,17 +247,15 @@ async def auth_google_callback(code: str):
                     }}
                 }}, '*');
                 
-                // Закрываем окно через 2 секунды
                 setTimeout(() => {{
                     window.close();
                 }}, 2000);
             }} else {{
-                // Если нет parent window, сохраняем в localStorage
                 localStorage.setItem('auth_user', JSON.stringify({{
                     id: {user["id"]},
                     google_id: "{user["google_id"]}",
                     name: "{user.get("name", "")}",
-                    email: "{user.get("picture", "")}"
+                    email: "{user.get("email", "")}"
                 }}));
                 
                 setTimeout(() => {{
@@ -272,114 +268,141 @@ async def auth_google_callback(code: str):
     """
     return HTMLResponse(content=html_content)
 
-
-
 @app.get("/tasks/my")
 async def get_my_tasks(google_id: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    tasks = await db_manager.get_users_tasks(user["id"])
-    return {"user_id": user["id"], "tasks": tasks}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/user/{google_id}")
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="User not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: int, google_id: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    task = await db_manager.get_task(task_id, user["id"])
-    return task
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}?google_id={google_id}")
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Task or user not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.post("/tasks/create")
 async def create_task(task: CreateTask, google_id: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    created_task = await db_manager.create_task(task.task_name, task.task_description, user["id"], task.private)
-
-    return {"message": "Success", "task": created_task}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{BACKEND_SERVICE_URL}/tasks/create",
+            json={
+                "task_name": task.task_name,
+                "task_description": task.task_description,
+                "private": task.private,
+                "google_id": google_id
+            }
+        )
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="User not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.delete("/tasks/{task_id}")
 async def delete_task(task_id: int, google_id: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    deleted_task = await db_manager.delete_task(task_id, user["id"])
-    return {"message": "Task deleted successfully", "task_id": deleted_task["id"]}
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(f"{BACKEND_SERVICE_URL}/tasks/{task_id}?google_id={google_id}")
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Task or user not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.post("/tasks/{task_id}/create_exchange")
 async def create_exchange(task_id: int, google_id: str, prompt: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    task = await db_manager.get_task(task_id, user["id"])
-    
-    await llm_manager.invalidate_task_cache(task_id, user["id"])
-    
-    task_context = await llm_manager.generate_task_context(task["task_name"], task["task_description"], task["id"], user["id"], task["task_context"])
-    await db_manager.update_task_context(task_id, user["id"], task_context)
-    
-    result = llm_manager.get_answer(prompt, task_context)
-    await db_manager.create_exchange(task_id, user["id"], prompt, result)
-    
-    return {"message": "Exchange created successfully", "exchange": result}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/exchange",
+            json={
+                "google_id": google_id,
+                "prompt": prompt
+            }
+        )
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Task or user not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.get("/tasks/{task_id}/exchanges")
 async def get_exchanges(task_id: int, google_id: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    exchanges = await db_manager.get_task_exchanges(task_id, user["id"])
-    task = await db_manager.get_task(task_id, user["id"])
-    return {"task": task, "exchanges": exchanges}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}/exchanges?google_id={google_id}")
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Task or user not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.get("/tasks/{task_id}/context")
 async def get_task_context(task_id: int, google_id: str):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    task = await db_manager.get_task(task_id, user["id"])
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-        
-    task_context = await llm_manager.generate_task_context(task["task_name"], task["task_description"], task["id"], user["id"], task["task_context"])
-    
-    if task_context != task["task_context"]:
-        await db_manager.update_task_context(task_id, user["id"], task_context)
-    
-    return {"task": task, "context": task_context}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}/context?google_id={google_id}")
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Task or user not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.post("/tasks/{task_id}/change_status")
 async def change_task_status(task_id: int, user_id: int, status: str):
-    await db_manager.update_task_status(task_id, user_id, status)
-    return {"message": "Task status changed successfully"}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/status",
+            json={
+                "user_id": user_id,
+                "status": status
+            }
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.post("/tasks/{task_id}/context/update")
 async def update_task_context(task_id: int, user_id: int, context: str):
-    await db_manager.update_task_context(task_id, user_id, context)
-    await llm_manager.invalidate_task_cache(task_id, user_id)
-    return {"message": "Task context updated successfully"}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/context",
+            json={
+                "user_id": user_id,
+                "context": context
+            }
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.get("/tasks/public")
 async def get_public_tasks():
-    tasks = await db_manager.get_public_tasks()
-    return {"tasks": tasks}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/public")
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.post("/tasks/{task_id}/privacy")
 async def update_task_privacy(task_id: int, google_id: str, private: bool):
-    user = await db_manager.get_user_by_google_id(google_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    updated_task = await db_manager.update_task_privacy(task_id, user["id"], private)
-    return {"message": "Task privacy updated successfully", "task": updated_task}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/privacy",
+            json={
+                "google_id": google_id,
+                "private": private
+            }
+        )
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Task or user not found")
+        elif response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Backend service error")
+        return response.json()
 
 @app.websocket("/ws/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str):
@@ -389,15 +412,16 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str)
         await websocket.accept()
         print(f"✅ WebSocket accepted for task {task_id}")
         
-        user = await db_manager.get_user_by_google_id(google_id)
-        if not user:
-            await websocket.send_json({"type": "error", "message": "User not found"})
-            return
-        
-        task = await db_manager.get_task(task_id, user["id"])
-        if not task:
-            await websocket.send_json({"type": "error", "message": "Task not found"})
-            return
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(f"{BACKEND_SERVICE_URL}/users/{google_id}")
+            if user_response.status_code != 200:
+                await websocket.send_json({"type": "error", "message": "User not found"})
+                return
+            
+            task_response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}?google_id={google_id}")
+            if task_response.status_code != 200:
+                await websocket.send_json({"type": "error", "message": "Task not found"})
+                return
         
         await websocket.send_json({"type": "connected", "task_id": task_id})
         print(f"📡 WebSocket connected successfully for task {task_id}")
@@ -410,69 +434,42 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str)
                 if data["type"] == "chat_message":
                     prompt = data["message"]
                     
-                    await llm_manager.invalidate_task_cache(task_id, user["id"])
-                    
-                    task_context = await llm_manager.generate_task_context(
-                        task["task_name"], 
-                        task["task_description"], 
-                        task["id"], 
-                        user["id"], 
-                        task["task_context"]
-                    )
-                    await db_manager.update_task_context(task_id, user["id"], task_context)
-                    
                     await websocket.send_json({
                         "type": "response_start",
                         "message": prompt
                     })
                     
-                    full_response = ""
-                    
-                    try:
-                        stream = llm_manager.client.chat.completions.create(
-                            model=llm_manager.model,
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": f"You are an AI assistant helping with task management. Here's the task context:\n{task_context}"
-                                },
-                                {
-                                    "role": "user",
-                                    "content": prompt
-                                }
-                            ],
-                            temperature=0.7,
-                            max_tokens=1000,
-                            stream=True
-                        )
-
-                        for chunk in stream:
-                            if chunk.choices[0].delta.content is not None:
-                                content = chunk.choices[0].delta.content
-                                if content and content.strip():
-                                    full_response += content
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        async with client.stream(
+                            'POST',
+                            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/chat",
+                            json={
+                                "google_id": google_id,
+                                "prompt": prompt
+                            }
+                        ) as response:
+                            if response.status_code != 200:
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "message": "Backend service error"
+                                })
+                                return
+                            
+                            full_response = ""
+                            async for chunk in response.aiter_text():
+                                if chunk and chunk.strip():
+                                    full_response += chunk
                                     await websocket.send_json({
                                         "type": "response_chunk",
-                                        "chunk": content,
+                                        "chunk": chunk,
                                         "full_response": full_response
                                     })
-                                    # Небольшая задержка для более плавного чтения
                                     await asyncio.sleep(0.03)
                             
-                    except Exception as e:
-                        print(f"Streaming error: {e}")
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": f"Streaming error: {str(e)}"
-                        })
-                        return
-                    
-                    await db_manager.create_exchange(task_id, user["id"], prompt, full_response)
-                    
-                    await websocket.send_json({
-                        "type": "response_complete",
-                        "full_response": full_response
-                    })
+                            await websocket.send_json({
+                                "type": "response_complete",
+                                "full_response": full_response
+                            })
                     
             except WebSocketDisconnect:
                 print(f"🔌 WebSocket disconnected for task {task_id}")

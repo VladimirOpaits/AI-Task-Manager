@@ -9,16 +9,12 @@ class Settings:
         self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
         self.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
         self.google_redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "")
-        self.database_url = os.getenv("DATABASE_URL", "")
-        self.llm_token = os.getenv("LLM_TOKEN", "")
-        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        self.backend_service_url = os.getenv("BACKEND_SERVICE_URL", "http://localhost:8001")
 
 GOOGLE_CLIENT_ID = Settings().google_client_id
 GOOGLE_CLIENT_SECRET = Settings().google_client_secret
 GOOGLE_REDIRECT_URI = Settings().google_redirect_uri
-DATABASE_URL = Settings().database_url
-LLM_TOKEN = Settings().llm_token
-REDIS_URL = Settings().redis_url
+BACKEND_SERVICE_URL = Settings().backend_service_url
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USER_INFO_URL = "https://openidconnect.googleapis.com/v1/userinfo" 
+GOOGLE_USER_INFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
