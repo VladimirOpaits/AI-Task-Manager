@@ -43,6 +43,35 @@ class LLMManager:
             print(f"OpenAI API Error: {e}")
             return f"🚫 Ошибка AI: {str(e)}"
 
+    def stream_answer(self, prompt: str, task_context: str):
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"You are an AI assistant helping with task management. Here's the task context:\n{task_context}"
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=1000,
+                stream=True
+            )
+
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    if content and content.strip():  
+                        yield content
+                    
+        except Exception as e:
+            print(f"OpenAI Streaming API Error: {e}")
+            yield f"🚫 Ошибка AI: {str(e)}"
+
     async def invalidate_task_cache(self, task_id: int, user_id: int):
         await self.redis.invalidate_task_context(task_id, user_id)
     

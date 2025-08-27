@@ -1,13 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2AuthorizationCodeBearer
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Optional
 import httpx
+import json
+import asyncio
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 
 from databasemanager import DatabaseManager
 from llmmanager import LLMManager
@@ -92,6 +95,29 @@ async def cors_debug_middleware(request, call_next):
 async def health_check():
     return {"status": "OK", "message": "API is running"}
 
+@app.websocket("/ws/test")
+async def websocket_test(websocket: WebSocket):
+    print("🔌 Test WebSocket connection attempt")
+    try:
+        await websocket.accept()
+        print("✅ Test WebSocket accepted")
+        await websocket.send_json({"type": "test", "message": "WebSocket works!"})
+        
+        while True:
+            try:
+                data = await websocket.receive_json()
+                print(f"📨 Test WebSocket received: {data}")
+                await websocket.send_json({"type": "echo", "message": f"Echo: {data}"})
+            except WebSocketDisconnect:
+                print("🔌 Test WebSocket disconnected")
+                break
+    except Exception as e:
+        print(f"❌ Test WebSocket error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+
 @app.get("/login/google")
 async def login_google():
     google_auth_url = f"{GOOGLE_AUTH_URL}?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={GOOGLE_REDIRECT_URI}&scope=openid%20email%20profile&access_type=offline"
@@ -137,10 +163,114 @@ async def auth_google_callback(code: str):
 
     if existing_user:
         await db_manager.update_user_tokens(user_info["sub"], token_data["access_token"], token_data.get("refresh_token"), expires_at)
+        user = existing_user
     else:
-        await db_manager.create_user(user_info["sub"], user_info["email"], user_info["name"], user_info["picture"], token_data["access_token"], token_data.get("refresh_token"), expires_at)
+        user = await db_manager.create_user(user_info["sub"], user_info["email"], user_info["name"], user_info["picture"], token_data["access_token"], token_data.get("refresh_token"), expires_at)
 
-    return {"message": "User authenticated successfully"}
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Авторизация успешна</title>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                background: #f7f7f8;
+            }}
+            .container {{
+                text-align: center;
+                padding: 40px;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                max-width: 500px;
+            }}
+            .success-icon {{
+                font-size: 48px;
+                margin-bottom: 16px;
+            }}
+            h1 {{
+                color: #059669;
+                margin-bottom: 8px;
+            }}
+            p {{
+                color: #6b7280;
+                margin-bottom: 16px;
+            }}
+            .user-info {{
+                background: #f3f4f6;
+                padding: 16px;
+                border-radius: 8px;
+                margin: 16px 0;
+                text-align: left;
+            }}
+            .user-name {{
+                font-weight: 600;
+                color: #374151;
+                margin-bottom: 4px;
+            }}
+            .user-email {{
+                color: #6b7280;
+                font-size: 14px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success-icon">✅</div>
+            <h1>Авторизация успешна!</h1>
+            <p>Добро пожаловать в AI Task Manager</p>
+            
+            <div class="user-info">
+                <div class="user-name">{user.get("name", "Пользователь")}</div>
+                <div class="user-email">{user.get("email", "")}</div>
+            </div>
+            
+            <p>Окно закроется автоматически...</p>
+        </div>
+        
+        <script>
+            // Отправляем данные пользователя в parent window
+            if (window.opener) {{
+                window.opener.postMessage({{
+                    type: 'google_auth_success',
+                    user: {{
+                        id: {user["id"]},
+                        google_id: "{user["google_id"]}",
+                        name: "{user.get("name", "")}",
+                        email: "{user.get("email", "")}",
+                        picture: "{user.get("picture", "")}"
+                    }}
+                }}, '*');
+                
+                // Закрываем окно через 2 секунды
+                setTimeout(() => {{
+                    window.close();
+                }}, 2000);
+            }} else {{
+                // Если нет parent window, сохраняем в localStorage
+                localStorage.setItem('auth_user', JSON.stringify({{
+                    id: {user["id"]},
+                    google_id: "{user["google_id"]}",
+                    name: "{user.get("name", "")}",
+                    email: "{user.get("picture", "")}"
+                }}));
+                
+                setTimeout(() => {{
+                    window.location.href = '/';
+                }}, 2000);
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 
 
@@ -250,3 +380,107 @@ async def update_task_privacy(task_id: int, google_id: str, private: bool):
     
     updated_task = await db_manager.update_task_privacy(task_id, user["id"], private)
     return {"message": "Task privacy updated successfully", "task": updated_task}
+
+@app.websocket("/ws/{task_id}")
+async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str):
+    print(f"🔌 WebSocket connection attempt for task {task_id}, google_id: {google_id}")
+    
+    try:
+        await websocket.accept()
+        print(f"✅ WebSocket accepted for task {task_id}")
+        
+        user = await db_manager.get_user_by_google_id(google_id)
+        if not user:
+            await websocket.send_json({"type": "error", "message": "User not found"})
+            return
+        
+        task = await db_manager.get_task(task_id, user["id"])
+        if not task:
+            await websocket.send_json({"type": "error", "message": "Task not found"})
+            return
+        
+        await websocket.send_json({"type": "connected", "task_id": task_id})
+        print(f"📡 WebSocket connected successfully for task {task_id}")
+        
+        while True:
+            try:
+                data = await websocket.receive_json()
+                print(f"📨 Received WebSocket message: {data}")
+                
+                if data["type"] == "chat_message":
+                    prompt = data["message"]
+                    
+                    await llm_manager.invalidate_task_cache(task_id, user["id"])
+                    
+                    task_context = await llm_manager.generate_task_context(
+                        task["task_name"], 
+                        task["task_description"], 
+                        task["id"], 
+                        user["id"], 
+                        task["task_context"]
+                    )
+                    await db_manager.update_task_context(task_id, user["id"], task_context)
+                    
+                    await websocket.send_json({
+                        "type": "response_start",
+                        "message": prompt
+                    })
+                    
+                    full_response = ""
+                    
+                    try:
+                        stream = llm_manager.client.chat.completions.create(
+                            model=llm_manager.model,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": f"You are an AI assistant helping with task management. Here's the task context:\n{task_context}"
+                                },
+                                {
+                                    "role": "user",
+                                    "content": prompt
+                                }
+                            ],
+                            temperature=0.7,
+                            max_tokens=1000,
+                            stream=True
+                        )
+
+                        for chunk in stream:
+                            if chunk.choices[0].delta.content is not None:
+                                content = chunk.choices[0].delta.content
+                                if content and content.strip():
+                                    full_response += content
+                                    await websocket.send_json({
+                                        "type": "response_chunk",
+                                        "chunk": content,
+                                        "full_response": full_response
+                                    })
+                                    # Небольшая задержка для более плавного чтения
+                                    await asyncio.sleep(0.03)
+                            
+                    except Exception as e:
+                        print(f"Streaming error: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Streaming error: {str(e)}"
+                        })
+                        return
+                    
+                    await db_manager.create_exchange(task_id, user["id"], prompt, full_response)
+                    
+                    await websocket.send_json({
+                        "type": "response_complete",
+                        "full_response": full_response
+                    })
+                    
+            except WebSocketDisconnect:
+                print(f"🔌 WebSocket disconnected for task {task_id}")
+                break
+                
+    except Exception as e:
+        print(f"❌ WebSocket error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
