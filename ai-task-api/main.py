@@ -1,21 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.security import OAuth2AuthorizationCodeBearer
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Optional
-import httpx
 import json
 import asyncio
 from datetime import datetime, timedelta
 
-from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USER_INFO_URL, BACKEND_SERVICE_URL
-
-oauth2_scheme = OAuth2AuthorizationCodeBearer(
-    authorizationUrl=GOOGLE_AUTH_URL,
-    tokenUrl=GOOGLE_TOKEN_URL)
+from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USER_INFO_URL
 
 class User(BaseModel):
     email: str
@@ -121,50 +115,17 @@ async def login_google_redirect():
 
 @app.get("/auth/google/callback")
 async def auth_google_callback(code: str):
-    async with httpx.AsyncClient() as client:
-        token_response = await client.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "code": code,
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri": GOOGLE_REDIRECT_URI,
-                "grant_type": "authorization_code",
-            },
-        )
+    # TODO: Здесь будет отправка в RabbitMQ для backend микросервиса
+    # Пока что возвращаем заглушку для демонстрации
     
-    token_data = token_response.json()
-    if token_response.status_code != 200:
-        raise HTTPException(status_code=400, detail="Invalid token response")
-    
-    async with httpx.AsyncClient() as client:
-        userinfo_response = await client.get(
-            GOOGLE_USER_INFO_URL,
-            headers={"Authorization": f"Bearer {token_data['access_token']}"},
-        )
-    
-    user_info = userinfo_response.json()
-
-    expires_at = datetime.now() + timedelta(seconds=token_data["expires_in"])
-    
-    async with httpx.AsyncClient() as client:
-        user_response = await client.post(
-            f"{BACKEND_SERVICE_URL}/users/auth",
-            json={
-                "google_id": user_info["sub"],
-                "email": user_info["email"],
-                "name": user_info["name"],
-                "picture": user_info["picture"],
-                "access_token": token_data["access_token"],
-                "refresh_token": token_data.get("refresh_token"),
-                "expires_at": expires_at.isoformat()
-            }
-        )
-    
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Backend service error")
-    
-    user = user_response.json()
+    # Имитируем получение данных пользователя
+    user = {
+        "id": 1,
+        "google_id": "demo_google_id_123",
+        "email": "demo@example.com",
+        "name": "Demo User",
+        "picture": "https://example.com/avatar.jpg"
+    }
 
     html_content = f"""
     <!DOCTYPE html>
@@ -268,142 +229,6 @@ async def auth_google_callback(code: str):
     """
     return HTMLResponse(content=html_content)
 
-@app.get("/tasks/my")
-async def get_my_tasks(google_id: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/user/{google_id}")
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="User not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.get("/tasks/{task_id}")
-async def get_task(task_id: int, google_id: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}?google_id={google_id}")
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Task or user not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.post("/tasks/create")
-async def create_task(task: CreateTask, google_id: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BACKEND_SERVICE_URL}/tasks/create",
-            json={
-                "task_name": task.task_name,
-                "task_description": task.task_description,
-                "private": task.private,
-                "google_id": google_id
-            }
-        )
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="User not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.delete("/tasks/{task_id}")
-async def delete_task(task_id: int, google_id: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BACKEND_SERVICE_URL}/tasks/{task_id}?google_id={google_id}")
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Task or user not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.post("/tasks/{task_id}/create_exchange")
-async def create_exchange(task_id: int, google_id: str, prompt: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/exchange",
-            json={
-                "google_id": google_id,
-                "prompt": prompt
-            }
-        )
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Task or user not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.get("/tasks/{task_id}/exchanges")
-async def get_exchanges(task_id: int, google_id: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}/exchanges?google_id={google_id}")
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Task or user not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.get("/tasks/{task_id}/context")
-async def get_task_context(task_id: int, google_id: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}/context?google_id={google_id}")
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Task or user not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.post("/tasks/{task_id}/change_status")
-async def change_task_status(task_id: int, user_id: int, status: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/status",
-            json={
-                "user_id": user_id,
-                "status": status
-            }
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.post("/tasks/{task_id}/context/update")
-async def update_task_context(task_id: int, user_id: int, context: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/context",
-            json={
-                "user_id": user_id,
-                "context": context
-            }
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.get("/tasks/public")
-async def get_public_tasks():
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/public")
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
-@app.post("/tasks/{task_id}/privacy")
-async def update_task_privacy(task_id: int, google_id: str, private: bool):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/privacy",
-            json={
-                "google_id": google_id,
-                "private": private
-            }
-        )
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Task or user not found")
-        elif response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Backend service error")
-        return response.json()
-
 @app.websocket("/ws/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str):
     print(f"🔌 WebSocket connection attempt for task {task_id}, google_id: {google_id}")
@@ -411,17 +236,6 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str)
     try:
         await websocket.accept()
         print(f"✅ WebSocket accepted for task {task_id}")
-        
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(f"{BACKEND_SERVICE_URL}/users/{google_id}")
-            if user_response.status_code != 200:
-                await websocket.send_json({"type": "error", "message": "User not found"})
-                return
-            
-            task_response = await client.get(f"{BACKEND_SERVICE_URL}/tasks/{task_id}?google_id={google_id}")
-            if task_response.status_code != 200:
-                await websocket.send_json({"type": "error", "message": "Task not found"})
-                return
         
         await websocket.send_json({"type": "connected", "task_id": task_id})
         print(f"📡 WebSocket connected successfully for task {task_id}")
@@ -439,37 +253,18 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, google_id: str)
                         "message": prompt
                     })
                     
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        async with client.stream(
-                            'POST',
-                            f"{BACKEND_SERVICE_URL}/tasks/{task_id}/chat",
-                            json={
-                                "google_id": google_id,
-                                "prompt": prompt
-                            }
-                        ) as response:
-                            if response.status_code != 200:
-                                await websocket.send_json({
-                                    "type": "error",
-                                    "message": "Backend service error"
-                                })
-                                return
-                            
-                            full_response = ""
-                            async for chunk in response.aiter_text():
-                                if chunk and chunk.strip():
-                                    full_response += chunk
-                                    await websocket.send_json({
-                                        "type": "response_chunk",
-                                        "chunk": chunk,
-                                        "full_response": full_response
-                                    })
-                                    await asyncio.sleep(0.03)
-                            
-                            await websocket.send_json({
-                                "type": "response_complete",
-                                "full_response": full_response
-                            })
+                    # TODO: Здесь будет отправка в RabbitMQ для backend микросервиса
+                    # Пока что возвращаем заглушку
+                    await websocket.send_json({
+                        "type": "response_chunk",
+                        "chunk": "Сообщение получено. RabbitMQ интеграция в разработке...",
+                        "full_response": "Сообщение получено. RabbitMQ интеграция в разработке..."
+                    })
+                    
+                    await websocket.send_json({
+                        "type": "response_complete",
+                        "full_response": "Сообщение получено. RabbitMQ интеграция в разработке..."
+                    })
                     
             except WebSocketDisconnect:
                 print(f"🔌 WebSocket disconnected for task {task_id}")

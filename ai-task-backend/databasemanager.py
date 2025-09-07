@@ -25,13 +25,15 @@ class DatabaseManager:
 
             await conn.execute(text("""CREATE TABLE IF NOT EXISTS users (
                                     id SERIAL PRIMARY KEY,
-                                    google_id VARCHAR(255) UNIQUE NOT NULL,
-                                    email TEXT NOT NULL,
+                                    telegram_id INTEGER UNIQUE,
+                                    telegram_username VARCHAR(255),
+                                    google_id VARCHAR(255) UNIQUE,
+                                    email TEXT,
                                     name VARCHAR(255),
                                     picture TEXT,
-                                    access_token TEXT NOT NULL,
+                                    access_token TEXT,
                                     refresh_token TEXT,
-                                    token_expires_at TIMESTAMP NOT NULL,
+                                    token_expires_at TIMESTAMP,
                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)"""))
             
             await conn.execute(text("""CREATE TABLE IF NOT EXISTS tasks (
@@ -127,7 +129,7 @@ class DatabaseManager:
             await conn.execute(text("""UPDATE tasks SET task_status = :status WHERE id = :task_id AND user_id = :user_id"""), {"status": status, "task_id": task_id, "user_id": user_id})
             return {"id": task_id, "task_status": status}
 
-    async def create_user(self, google_id: str, email: str, name: Optional[str] = None, picture: Optional[str] = None, access_token: Optional[str] = None, refresh_token: Optional[str] = None, token_expires_at: Optional[datetime] = None):
+    async def create_google_user(self, google_id: str, email: str, name: Optional[str] = None, picture: Optional[str] = None, access_token: Optional[str] = None, refresh_token: Optional[str] = None, token_expires_at: Optional[datetime] = None):
         async with self.engine.begin() as conn:
             result = await conn.execute(text("""INSERT INTO users (google_id, email, name, picture, access_token, refresh_token, token_expires_at) VALUES (:google_id, :email, :name, :picture, :access_token, :refresh_token, :token_expires_at) RETURNING id"""), {"google_id": google_id, "email": email, "name": name, "picture": picture, "access_token": access_token, "refresh_token": refresh_token, "token_expires_at": token_expires_at})
             row = result.fetchone()
@@ -135,7 +137,33 @@ class DatabaseManager:
                 raise Exception("Failed to create user")
             return {"id": row[0], "google_id": google_id, "email": email, "name": name, "picture": picture, "access_token": access_token, "refresh_token": refresh_token, "token_expires_at": token_expires_at}
 
-
+    async def create_telegram_user(self, telegram_id: int, telegram_username: str, google_id: Optional[str] = None, email: Optional[str] = None, name: Optional[str] = None, picture: Optional[str] = None, access_token: Optional[str] = None, refresh_token: Optional[str] = None, token_expires_at: Optional[datetime] = None):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""INSERT INTO users (telegram_id, telegram_username, google_id, email, name, picture, access_token, refresh_token, token_expires_at) VALUES (:telegram_id, :telegram_username, :google_id, :email, :name, :picture, :access_token, :refresh_token, :token_expires_at) RETURNING id"""), {"telegram_id": telegram_id, "telegram_username": telegram_username, "google_id": google_id, "email": email, "name": name, "picture": picture, "access_token": access_token, "refresh_token": refresh_token, "token_expires_at": token_expires_at})
+            row = result.fetchone()
+            if row is None:
+                raise Exception("Failed to create user")
+            return {"id": row[0], "telegram_id": telegram_id, "telegram_username": telegram_username, "google_id": google_id, "email": email, "name": name, "picture": picture, "access_token": access_token, "refresh_token": refresh_token, "token_expires_at": token_expires_at}
+    
+    async def get_user_by_telegram_id(self, telegram_id: int):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""SELECT * FROM users WHERE telegram_id = :telegram_id"""), {"telegram_id": telegram_id})
+            row = result.fetchone()
+            if row is None:
+                return None
+            return {
+                "id": row[0],
+                "telegram_id": row[1],
+                "telegram_username": row[2],
+                "google_id": row[3],
+                "email": row[4],
+                "name": row[5],
+                "picture": row[6],
+                "access_token": row[7],
+                "refresh_token": row[8],
+                "token_expires_at": row[9],
+                "created_at": row[10]
+            }
     async def get_users_tasks(self, user_id: int):
         async with self.engine.begin() as conn:
             result = await conn.execute(text("""
@@ -198,6 +226,29 @@ class DatabaseManager:
                 "token_expires_at": row[7],
                 "created_at": row[8]
             }
+
+    async def get_user_by_id(self, user_id: int):
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""SELECT * FROM users WHERE id = :user_id"""), {"user_id": user_id})
+            row = result.fetchone()
+            if row is None:
+                return None
+            return {
+                "id": row[0],
+                "google_id": row[1],
+                "email": row[2],
+                "name": row[3],
+                "picture": row[4],
+                "access_token": row[5],
+                "refresh_token": row[6],
+                "token_expires_at": row[7],
+                "created_at": row[8]
+            }
+
+    async def connect_google_user_to_telegram_user(self, google_id: str, telegram_id: int):
+        async with self.engine.begin() as conn:
+            await conn.execute(text("""UPDATE users SET google_id = :google_id WHERE telegram_id = :telegram_id"""), {"google_id": google_id, "telegram_id": telegram_id})
+            return {"google_id": google_id, "telegram_id": telegram_id}
 
     async def create_exchange(self, task_id: int, user_id: int, prompt: str, response: str):
         async with self.engine.begin() as conn:

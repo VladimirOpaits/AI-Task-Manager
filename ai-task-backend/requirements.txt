@@ -3,3 +3,4 @@ asyncpg
 redis[hiredis]
 openai
 python-dotenv
+aio-pika
